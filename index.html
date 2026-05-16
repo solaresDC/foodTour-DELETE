@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="FT" />
+<meta name="theme-color" content="#C84A2E" />
+<link rel="manifest" href="manifest.json" />
+<title>FT · Food Tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: Inter, ui-sans-serif, system-ui;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background: #F4EFE9;
+    display: block;
+    padding: 0;
+    overflow: hidden;
+    width: 100%; height: 100%;
+  }
+  #root {
+    position: fixed;
+    inset: 0;
+  }
+
+  .ft-hide-scroll::-webkit-scrollbar { display: none; }
+
+  @keyframes ftFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes ftSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  @keyframes ftPop { 0%{transform:scale(0.5);opacity:0;} 60%{transform:scale(1.12);opacity:1;} 100%{transform:scale(1);} }
+  @keyframes ftPulse { 0%{transform:scale(1);opacity:0.5;} 100%{transform:scale(1.5);opacity:0;} }
+  @keyframes ftStamp { 0%{transform:scale(2) rotate(10deg);opacity:0;} 60%{transform:scale(0.92) rotate(-10deg);opacity:1;} 100%{transform:scale(1) rotate(-8deg);} }
+  @keyframes ftConfetti { 0%{transform:translateY(0) rotate(0deg);opacity:1;} 100%{transform:translateY(800px) rotate(720deg);opacity:0;} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data/tour.jsx"></script>
+<script type="text/babel" src="components/UI.jsx"></script>
+<script type="text/babel" src="components/Map.jsx"></script>
+<script type="text/babel" src="components/Screens.jsx"></script>
+<script type="text/babel" src="components/Home.jsx"></script>
+<script type="text/babel" src="components/Wallet.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const IS_PWA = window.matchMedia('(display-mode: standalone)').matches
+  || window.navigator.standalone === true;
+
+function loadVisits() {
+  try { return JSON.parse(localStorage.getItem('ft:visits') || 'null') || {}; } catch { return {}; }
+}
+function saveVisits(v) {
+  try { localStorage.setItem('ft:visits', JSON.stringify(v)); } catch {}
+}
+
+// Seeded visits so the phone looks lived-in
+const SEED_VISITS = {
+  r2: { visitedAt: Date.now() - 1000*60*60*26, review: { stars: 5, text: 'Gobernador taco still unreal.', at: Date.now() - 1000*60*60*25 }, photos: [{ id:'s1', at: Date.now()-1000 }] },
+  r3: { visitedAt: Date.now() - 1000*60*60*24, review: { stars: 4, text: 'Rose sauce + jerk? Chef knew.', at: Date.now() - 1000*60*60*23 }, photos: [] },
+  r6: { visitedAt: Date.now() - 1000*60*60*20, photos: [] },
+};
+
+function ChosenApp({ visits, setVisits }) {
+  const [userPos, setUserPos] = useState({ ...FT_USER_START });
+  const [openStopId, setOpenStopId] = useState(null);
+  const [checkInId, setCheckInId] = useState(null);
+  const [reviewId, setReviewId] = useState(null);
+  const [showWallet, setShowWallet] = useState(false);
+  const [filter, setFilter] = useState('all');
+
+  const accent = '#C84A2E';
+  const night = false;
+  const [mode, setMode] = useState('route');
+  const tour = FT_DATA.tours[0];
+  const openStop = FT_DATA.restaurants.find(r => r.id === openStopId);
+  const checkInStop = FT_DATA.restaurants.find(r => r.id === checkInId);
+  const reviewStop = FT_DATA.restaurants.find(r => r.id === reviewId);
+
+  const completeCheckIn = (payload) => {
+    setVisits(v => ({
+      ...v,
+      [checkInId]: {
+        ...(v[checkInId] || {}),
+        visitedAt: Date.now(),
+        photos: Array.from({ length: payload.photos }).map((_, i) => ({ id: 'p_' + Math.random().toString(36).slice(2,8), at: Date.now() + i })),
+      },
+    }));
+    setCheckInId(null);
+    setTimeout(() => setOpenStopId(checkInId), 350);
+  };
+  const submitReview = ({ stars, text }) => {
+    setVisits(v => ({
+      ...v,
+      [reviewId]: { ...(v[reviewId] || {}), review: { stars, text, at: Date.now() } },
+    }));
+    setReviewId(null);
+    setTimeout(() => setOpenStopId(reviewId), 200);
+  };
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: '#F4EFE9', fontFamily: 'Inter, ui-sans-serif, system-ui' }}>
+      <ChosenHome
+        tour={tour}
+        restaurants={FT_DATA.restaurants}
+        visits={visits}
+        userPos={userPos}
+        setUserPos={setUserPos}
+        mode={mode}
+        setMode={setMode}
+        accent={accent}
+        night={night}
+        filter={filter}
+        setFilter={setFilter}
+        onOpenStop={setOpenStopId}
+        onOpenWallet={() => setShowWallet(true)}
+      />
+
+      {showWallet && (
+        <FTWallet
+          tour={tour}
+          restaurants={FT_DATA.restaurants}
+          visits={visits}
+          accent={accent}
+          night={night}
+          onClose={() => setShowWallet(false)}
+        />
+      )}
+
+      {openStop && !checkInStop && !reviewStop && (
+        <FTDetailSheet
+          restaurant={openStop}
+          visit={visits[openStop.id]}
+          accent={accent}
+          night={night}
+          onClose={() => setOpenStopId(null)}
+          onCheckIn={() => { setCheckInId(openStop.id); setOpenStopId(null); }}
+          onReview={() => { setReviewId(openStop.id); setOpenStopId(null); }}
+        />
+      )}
+      {checkInStop && (
+        <FTCheckInFlow
+          restaurant={checkInStop}
+          userPos={userPos}
+          accent={accent}
+          night={night}
+          onCancel={() => setCheckInId(null)}
+          onComplete={completeCheckIn}
+        />
+      )}
+      {reviewStop && (
+        <FTReviewFlow
+          restaurant={reviewStop}
+          accent={accent}
+          night={night}
+          onCancel={() => setReviewId(null)}
+          onSubmit={submitReview}
+        />
+      )}
+    </div>
+  );
+}
+
+// Home — header has segmented filter + split-out progress ring
+function ChosenHome({
+  tour, restaurants, visits, userPos, setUserPos,
+  mode, setMode, accent, night,
+  filter, setFilter, onOpenStop, onOpenWallet,
+}) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const scrollerRef = useRef(null);
+
+  // ── UI 8 eyelash drawer state ──
+  const [stripOpen, setStripOpen] = useState(false);
+  const stripDragRef = useRef({ startY: 0, dy: 0, dragging: false });
+  const [stripDragDy, setStripDragDy] = useState(0);
+  const stripDragRatio = stripOpen
+    ? 1 + (stripDragDy / 60)
+    : (stripDragDy / 60);
+  const stripRatio = Math.max(0, Math.min(1, stripDragRatio));
+  const stripPush = stripRatio * 56;
+
+  const onPointerDown = (e) => {
+    stripDragRef.current = { startY: e.clientY, dy: 0, dragging: true };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!stripDragRef.current.dragging) return;
+    const dy = e.clientY - stripDragRef.current.startY;
+    const clamped = stripOpen ? Math.min(0, Math.max(-60, dy)) : Math.max(0, Math.min(60, dy));
+    stripDragRef.current.dy = clamped;
+    setStripDragDy(clamped);
+  };
+  const onPointerUp = () => {
+    if (!stripDragRef.current.dragging) return;
+    const dy = stripDragRef.current.dy;
+    stripDragRef.current.dragging = false;
+    if (!stripOpen && dy > 18) setStripOpen(true);
+    else if (stripOpen && dy < -18) setStripOpen(false);
+    setStripDragDy(0);
+  };
+
+  const orderedStops = tour.stopIds.map(id => restaurants.find(r => r.id === id)).filter(Boolean);
+  const filteredStops = orderedStops.filter(r => {
+    const v = !!visits[r.id]?.visitedAt;
+    if (filter === 'visited') return v;
+    if (filter === 'unvisited') return !v;
+    return true;
+  });
+  const done = orderedStops.filter(r => visits[r.id]?.visitedAt).length;
+  const total = orderedStops.length;
+  const remaining = orderedStops.filter(r => !visits[r.id]?.visitedAt);
+  const optimized = mode === 'route' ? ftOptimalOrder(userPos, remaining) : [];
+  const nextId = optimized[0]?.id;
+  const next = nextId ? orderedStops.find(r => r.id === nextId) : null;
+  const counts = {
+    all: orderedStops.length,
+    visited: orderedStops.filter(r => visits[r.id]?.visitedAt).length,
+    unvisited: orderedStops.filter(r => !visits[r.id]?.visitedAt).length,
+  };
+
+  const onScroll = () => {
+    const s = scrollerRef.current;
+    if (!s) return;
+    const cards = s.querySelectorAll('[data-stop-card]');
+    let closest = 0, min = Infinity;
+    const center = s.scrollLeft + s.clientWidth / 2;
+    cards.forEach((c, i) => {
+      const mid = c.offsetLeft + c.offsetWidth / 2;
+      const d = Math.abs(mid - center);
+      if (d < min) { min = d; closest = i; }
+    });
+    setActiveIdx(closest);
+  };
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+        <FTMap
+          restaurants={restaurants}
+          tour={{ ...tour, stopIds: filteredStops.map(r => r.id) }}
+          visits={visits}
+          userPos={userPos}
+          ambient={window.FT_AMBIENT || []}
+          activeId={filteredStops[activeIdx]?.id}
+          mode={mode}
+          night={night}
+          accent={accent}
+          onTapStop={(id) => onOpenStop(id)}
+          onDragUser={(latlng) => setUserPos(latlng)}
+        />
+      </div>
+
+      {/* Header — UI 8: title card + pull-down stats drawer + eyelash handle, plus split-out progress ring */}
+      {(() => {
+        const drawerMaxH = stripRatio * 50;
+        const counts = {
+          all: orderedStops.length,
+          visited: orderedStops.filter(r => visits[r.id]?.visitedAt).length,
+          unvisited: orderedStops.filter(r => !visits[r.id]?.visitedAt).length,
+        };
+        return (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+            padding: 'calc(54px + env(safe-area-inset-top)) 14px 0', pointerEvents: 'none',
+          }}>
+            <div style={{
+              pointerEvents: 'auto',
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+            }}>
+              {/* Left side — title card with eyelash handle below */}
+              <div style={{ flex: 1, position: 'relative' }}>
+                <div style={{
+                  padding: '10px 14px', borderRadius: 18,
+                  background: 'rgba(255,255,255,0.92)',
+                  backdropFilter: 'blur(14px)',
+                  boxShadow: '0 4px 14px rgba(60,40,20,0.14)',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>FT · Toronto</div>
+                  <div style={{ fontFamily: '"Instrument Serif", serif', fontSize: 22, lineHeight: 1.05, color: '#1a1411' }}>{tour.name}</div>
+
+                  {/* Pull-down drawer — Stops · Done · To go with switchable pill */}
+                  <div style={{
+                    maxHeight: drawerMaxH,
+                    opacity: stripRatio,
+                    transition: stripDragRef.current.dragging ? 'none' : 'max-height 320ms cubic-bezier(.2,.8,.2,1), opacity 220ms',
+                  }}>
+                    <div style={{
+                      position: 'relative', marginTop: 8, paddingTop: 8,
+                      borderTop: '1px solid rgba(0,0,0,0.06)',
+                      display: 'flex',
+                    }}>
+                      {(() => {
+                        const order = ['all', 'visited', 'unvisited'];
+                        const idx = Math.max(0, order.indexOf(filter));
+                        return (
+                          <div style={{
+                            position: 'absolute', top: 4, bottom: -2,
+                            left: `calc(${(100 / 3) * idx}% + 2px)`,
+                            width: `calc(${100 / 3}% - 4px)`,
+                            background: 'rgba(26,20,17,0.06)',
+                            border: '1px solid rgba(26,20,17,0.10)',
+                            borderRadius: 10,
+                            transition: 'left 320ms cubic-bezier(.2,.8,.2,1)',
+                            pointerEvents: 'none', zIndex: 0,
+                          }} />
+                        );
+                      })()}
+                      {[
+                        { k: 'all',       n: counts.all,       l: 'Stops', color: '#1a1411' },
+                        { k: 'visited',   n: counts.visited,   l: 'Done',  color: '#2E8B57' },
+                        { k: 'unvisited', n: counts.unvisited, l: 'To go', color: '#1a1411' },
+                      ].map((c, i, arr) => (
+                        <button key={c.l} onClick={() => setFilter(c.k)} style={{
+                          flex: 1, textAlign: 'center',
+                          background: 'transparent', border: 'none', cursor: 'pointer',
+                          padding: '0 4px', position: 'relative', zIndex: 1,
+                          borderRight: i < arr.length-1 ? '1px solid rgba(0,0,0,0.06)' : 'none',
+                        }}>
+                          <div style={{
+                            fontFamily: '"Instrument Serif", serif', fontSize: 22, lineHeight: 1, color: c.color,
+                          }}>{c.n}</div>
+                          <div style={{
+                            fontSize: 9, textTransform: 'uppercase', letterSpacing: 1,
+                            color: c.l === 'Done' ? '#2E8B57' : '#8a7a66',
+                            fontWeight: 700, marginTop: 3,
+                          }}>{c.l}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Eyelash handle — wide horizontal grabber */}
+                <div
+                  onClick={() => setStripOpen(o => !o)}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                  onPointerCancel={onPointerUp}
+                  style={{
+                    position: 'absolute', left: '50%', top: '100%',
+                    transform: `translateX(-50%) translateY(${(stripRatio - (stripOpen ? 1 : 0)) * 4 - 1}px)`,
+                    width: 200, height: 12,
+                    background: 'rgba(255,255,255,0.92)',
+                    backdropFilter: 'blur(14px)',
+                    borderRadius: '0 0 10px 10px',
+                    boxShadow: '0 6px 12px rgba(60,40,20,0.12)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', touchAction: 'none',
+                    transition: 'transform 220ms',
+                  }}>
+                  <div style={{ width: 44, height: 2, borderRadius: 99, background: 'rgba(0,0,0,0.32)' }} />
+                </div>
+              </div>
+
+              {/* Right side — split-out progress ring */}
+              <div style={{
+                padding: 8, borderRadius: 99,
+                background: 'rgba(255,255,255,0.92)',
+                backdropFilter: 'blur(14px)',
+                boxShadow: '0 4px 14px rgba(60,40,20,0.14)',
+                flexShrink: 0,
+              }}>
+                <FTProgressRing done={done} total={total} accent={accent} night={night} />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Mode toggle */}
+      <div style={{ position: 'absolute', top: 134 + stripPush, left: 0, right: 0, zIndex: 20, display: 'flex', justifyContent: 'center', transition: 'top 220ms' }}>
+        <FTModeToggle mode={mode} onChange={setMode} accent={accent} night={night} />
+      </div>
+
+      {/* Next-up hero band */}
+      {next && (
+        <button onClick={() => onOpenStop(next.id)} style={{
+          position: 'absolute', top: 184 + stripPush, left: 14, right: 14, zIndex: 20,
+          padding: '10px 14px', borderRadius: 18, border: 'none',
+          background: accent, color: '#fff', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 12,
+          boxShadow: `0 8px 22px ${accent}55`, cursor: 'pointer',
+          transition: 'top 220ms',
+        }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 12,
+            background: 'rgba(255,255,255,0.22)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <FTIcon name="walk" size={18} sw={2.2} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, letterSpacing: 2, opacity: 0.7, fontWeight: 700 }}>
+              NEXT STOP · {ftMeters(userPos, next.coords)} M
+            </div>
+            <div style={{
+              fontFamily: '"Instrument Serif", serif', fontSize: 20,
+              lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>{next.name}</div>
+          </div>
+          <FTIcon name="chevron" size={18} sw={2.4} />
+        </button>
+      )}
+
+      {/* Card stack */}
+      <div
+        ref={scrollerRef}
+        onScroll={onScroll}
+        style={{
+          position: 'absolute', bottom: 'calc(96px + env(safe-area-inset-bottom))', left: 0, right: 0, zIndex: 20,
+          display: 'flex', gap: 14, padding: '12px 60px',
+          overflowX: 'auto', scrollSnapType: 'x mandatory',
+          scrollbarWidth: 'none',
+        }}
+        className="ft-hide-scroll"
+      >
+        {filteredStops.map((r) => (
+          <div key={r.id} data-stop-card style={{ scrollSnapAlign: 'center', flexShrink: 0 }}>
+            <FTStopCard
+              restaurant={r}
+              idx={orderedStops.findIndex(o => o.id === r.id) + 1}
+              visit={visits[r.id]}
+              accent={accent}
+              night={night}
+              userPos={userPos}
+              isNext={r.id === nextId}
+              onTap={() => onOpenStop(r.id)}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Page dots */}
+      <div style={{
+        position: 'absolute', bottom: 'calc(78px + env(safe-area-inset-bottom))', left: 0, right: 0, zIndex: 20,
+        display: 'flex', justifyContent: 'center', gap: 5, pointerEvents: 'none',
+      }}>
+        {filteredStops.map((_, i) => (
+          <div key={i} style={{
+            width: i === activeIdx ? 18 : 5, height: 5, borderRadius: 99,
+            background: i === activeIdx ? '#1a1411' : 'rgba(0,0,0,0.22)',
+            transition: 'width 260ms',
+          }} />
+        ))}
+      </div>
+
+      <FTBottomNav accent={accent} night={night} onProfile={onOpenWallet} />
+    </div>
+  );
+}
+
+function PWARoot() {
+  const [visits, setVisits] = useState(() => IS_PWA ? loadVisits() : SEED_VISITS);
+
+  useEffect(() => {
+    if (IS_PWA) saveVisits(visits);
+  }, [visits]);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#F4EFE9' }}>
+      <ChosenApp visits={visits} setVisits={setVisits} />
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<PWARoot />);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
