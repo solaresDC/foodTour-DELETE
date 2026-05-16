@@ -277,7 +277,7 @@ function ChosenHome({
         return (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-            padding: 'calc(54px + env(safe-area-inset-top)) 14px 0', pointerEvents: 'none',
+            padding: 'calc(env(safe-area-inset-top) + 8px) 14px 0', pointerEvents: 'none',
           }}>
             <div style={{
               pointerEvents: 'auto',
@@ -386,14 +386,14 @@ function ChosenHome({
       })()}
 
       {/* Mode toggle */}
-      <div style={{ position: 'absolute', top: 134 + stripPush, left: 0, right: 0, zIndex: 20, display: 'flex', justifyContent: 'center', transition: 'top 220ms' }}>
+      <div style={{ position: 'absolute', top: `calc(${88 + stripPush}px + env(safe-area-inset-top))`, left: 0, right: 0, zIndex: 20, display: 'flex', justifyContent: 'center', transition: 'top 220ms' }}>
         <FTModeToggle mode={mode} onChange={setMode} accent={accent} night={night} />
       </div>
 
       {/* Next-up hero band */}
       {next && (
         <button onClick={() => onOpenStop(next.id)} style={{
-          position: 'absolute', top: 184 + stripPush, left: 14, right: 14, zIndex: 20,
+          position: 'absolute', top: `calc(${136 + stripPush}px + env(safe-area-inset-top))`, left: 14, right: 14, zIndex: 20,
           padding: '10px 14px', borderRadius: 18, border: 'none',
           background: accent, color: '#fff', textAlign: 'left',
           display: 'flex', alignItems: 'center', gap: 12,
